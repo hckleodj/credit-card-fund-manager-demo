@@ -123,6 +123,10 @@ body{background:#f7f8fa}
 .turnover-legend{font-size:10px;color:#92a0ad;line-height:1.6;padding:8px 12px 11px}
 @media(max-width:355px){.turnover-name{font-size:11px}.turnover-value{font-size:11px}.turnover-source{gap:6px}}
 
+
+.turnover-history{padding:9px 12px;background:#eef8f5;border-bottom:1px solid #daebe5;font-size:11px;line-height:1.7;color:#317b69}
+.turnover-history b{color:#256c5b}
+.turnover-source.fcast{background:#fcfdff}
 </style>
 </head>
 <body>
@@ -201,7 +205,8 @@ function turnoverItem(row){
  const c=card(row.card),isToday=row.date<=baseDate;
  const d=isToday?'今天':row.date===addDays(baseDate,1)?'明天':row.date===addDays(baseDate,2)?'后天':'第3天';
  const label=row.kind==='unplanned'?'账单到期补足':'分批还款';
- const detail=row.kind==='unplanned'?'银行到期 '+niceDate(row.originalDate)+' · 尚未安排':'已排 '+niceDate(row.originalDate);
+ const paid=state.plans.find(p=>p.id===row.id)?.paid||0;
+ const detail=row.kind==='unplanned'?'银行到期 '+niceDate(row.originalDate)+' · 尚未安排':'已排 '+niceDate(row.originalDate)+(paid?' · 已还 '+formatMoney(paid):'');
  const action=row.kind==='unplanned'
    ?'<button class="inline-action" data-action="newplan" data-card="'+c.id+'" data-date="'+row.date+'">补计划 ›</button>'
    :'<button class="inline-action" data-action="repay" data-id="'+row.id+'">记已还 ›</button>';
@@ -209,6 +214,24 @@ function turnoverItem(row){
    :'<span class="tag">'+(isToday?'当前现金可覆盖':'按现有现金可覆盖')+'</span>';
  return '<div class="turnover-item"><span class="turnover-number">'+row.step+'</span><div class="turnover-body"><div class="turnover-name">'+d+' · '+c.name.replace('银行','')+' '+c.last4+' · '+label+'</div><div class="turnover-desc">'+detail+' · '+action+'</div></div><div class="turnover-value">'+formatMoney(row.amount)+status+'</div></div>';
 }
+
+function turnoverHistory(){
+ const rows=state.events.filter(e=>e.date===baseDate&&(e.type==='income'||e.type==='loan'||e.type==='repay')).slice(-4);
+ if(!rows.length)return '';
+ const types={income:'经营／自有资金',own:'自有资金',bankloan:'银行正规借款',otherloan:'其他合法借款'};
+ const parts=rows.map(e=>e.type==='repay'
+  ?'已还 '+(card(e.card)?.name.replace('银行','')||'某卡')+' '+formatMoney(e.amount)
+  :'已到账 '+(types[e.source]||types[e.type]||'已确认资金')+' '+formatMoney(e.net)+(e.type==='loan'?'（新增债务 '+formatMoney(e.debt)+(e.fee?'，费用 '+formatMoney(e.fee):'')+'）':'')
+ );
+ return '<div class="turnover-history"><b>今日已执行：</b>'+parts.join('；')+'。页面将按实际净到账与实际还款重算后续步骤。</div>';
+}
+function turnoverForecastRows(){
+ const funds=[...state.confirmed.map(f=>({...f,level:'已确认但未到账'})),...state.estimated.map(f=>({...f,level:'仅预计'}))]
+   .filter(f=>f.amount>0&&f.date>baseDate&&f.date<=addDays(baseDate,3));
+ if(!funds.length)return '';
+ return funds.map(f=>'<div class="turnover-source fcast"><span class="miniicon blue">⌁</span><div class="info"><div class="name">已登记未来资金 · '+niceDate(f.date)+'</div><div class="sub">'+(f.source||'来源未指定')+' · '+f.level+'，未实际到账，周转执行顺序不依赖这笔钱</div></div><div class="op"><strong>'+formatMoney(f.amount)+'</strong><button class="inline-action" data-action="futurefund">调整计划 ›</button></div></div>').join('');
+}
+
 function turnoverFundingSummary(rows){
  const gaps=rows.filter(x=>x.missing>0);
  if(!gaps.length)return '<div class="turnover-funding" style="background:#f0f8f5;color:#267d67">当前现金可覆盖未来3天已知还款；无需假设新增资金。</div>';
@@ -254,7 +277,9 @@ function renderHome(){
       <div class="turnover-intro"><strong>先还款 → 核实净到账 → 再续还</strong><div>按实际可用现金 ${formatMoney(activeCash())} 推进；显示的是还款日期，不代表任何机构的放款承诺。</div></div>
       ${turnoverTimeline().slice(0,2).map(turnoverItem).join('')||'<div class="turnover-intro">当前没有待执行的还款计划。</div>'}
       ${turnoverFundingSummary(turnoverTimeline())}
+      ${turnoverHistory()}
       <div class="turnover-source"><span class="miniicon">¥</span><div class="info"><div class="name">候选资金 · 建设2250 正规现金服务</div><div class="sub">${state.cashOffer.verified?'银行报价已自行核实':'报价待银行核实'} · 预计 ${niceDate(state.cashOffer.eta)}<br>拟净到账 ${formatMoney(state.cashOffer.net)} · 手续费 ${formatMoney(state.cashOffer.fee)} · 尚未到账</div></div><div class="op"><strong class="muted">未计现金</strong><button class="inline-action" data-action="offer">核对报价 ›</button></div></div>
+      ${turnoverForecastRows()}
       <div class="turnover-source"><span class="miniicon blue">¥</span><div class="info"><div class="name">经营回款 / 其他自有资金 / 合规借款</div><div class="sub">记录真实净到账及新债务；已经计入现金的账户间转账不重复增加总额</div></div><div class="op"><button class="inline-action" data-action="fund">确认到账 ›</button></div></div>
       <details class="turnover-fold"><summary>展开后续 ${turnoverTimeline().length} 步执行顺序 ⌄</summary><div class="inside">${turnoverTimeline().slice(2).map(turnoverItem).join('')||'<div class="note">以上已包含全部计划步骤。</div>'}</div></details>
       <div class="turnover-legend">消费额度不是现金；还款也不代表可以提出等额现金。银行贷款金额、净到账、费用及日期需以实际办理结果为准。</div>
@@ -273,13 +298,41 @@ function todayRepay(pid){const p=state.plans.find(x=>x.id===pid);if(!p)return;co
 function cashEdit(){modal('修改当前资金','只需要输入现在真正可用的金额，不必交代来源。',`${moneyField('cash','当前实际现金（元）',displayNumber(state.cash))}${moneyField('reserved','其中要预留不用的金额（元）',displayNumber(state.reserved))}<div class="warntext">现金按已统计账户的总额核对；账户之间转账不算新增资金。未来预计到账不会自动记为已收到。</div>`,'更新资金',d=>{const cash=cents(d.get('cash')),reserved=cents(d.get('reserved'));if(reserved>cash)throw Error('预留金额不能超过当前实际现金');state.cash=cash;state.reserved=reserved;closeModal();render();toast('现金预算已更新');});}
 function futureFundModal(){
 const x=state.estimated[0]||state.confirmed[0]||{date:addDays(baseDate,2),amount:0};const confirmed=state.confirmed.length>0;
-modal('设置未来资金','这笔钱什么时候能用、是否已经确定，会影响后续三天缺口。',`<div class="field"><label for="date">预计可使用日期</label><input type="date" id="date" name="date" min="${addDays(baseDate,1)}" max="${addDays(baseDate,90)}" value="${x.date}" required></div>${moneyField('amount','将到账的净金额（元）',displayNumber(x.amount))}<div class="field"><label for="certainty">确定程度</label><select name="certainty" id="certainty"><option value="estimate" ${confirmed?'':'selected'}>只是预计：保守测算不算入</option><option value="confirmed" ${confirmed?'selected':''}>已确认将到账：在指定日期计入预测</option></select></div><div class="warntext">即使选择“已确认将到账”，这笔款也不会立刻进入当前现金。当天真正到账后仍要通过“记录实际到账”单独确认，避免重复统计。</div>`,'保存未来资金',d=>{const amount=cents(d.get('amount')),date=d.get('date');if(!date||date<=baseDate||date>addDays(baseDate,90))throw Error('请选择未来90天内的日期');state.estimated=[];state.confirmed=[];if(amount>0){const x={id:'future1',date,amount};if(d.get('certainty')==='confirmed')state.confirmed=[x];else state.estimated=[x];}closeModal();render();toast('未来资金已更新，3天缺口重新计算');});}
+modal('设置未来资金','这笔钱什么时候能用、是否已经确定，会影响后续三天缺口。',`<div class="field"><label for="date">预计可使用日期</label><input type="date" id="date" name="date" min="${addDays(baseDate,1)}" max="${addDays(baseDate,90)}" value="${x.date}" required></div>${moneyField('amount','将到账的净金额（元）',displayNumber(x.amount))}<div class="field"><label for="source">预计资金来源</label><select name="source" id="source"><option value="经营回款">经营回款</option><option value="此前未计入的自有资金">此前未计入的自有资金</option><option value="正规借款待放款">正规借款待放款</option></select></div><div class="field"><label for="certainty">确定程度</label><select name="certainty" id="certainty"><option value="estimate" ${confirmed?'':'selected'}>只是预计：保守测算不算入</option><option value="confirmed" ${confirmed?'selected':''}>已确认将到账：在指定日期计入预测</option></select></div><div class="warntext">即使选择“已确认将到账”，这笔款也不会立刻进入当前现金。当天真正到账后仍要通过“记录实际到账”单独确认，避免重复统计。</div>`,'保存未来资金',d=>{const amount=cents(d.get('amount')),date=d.get('date');if(!date||date<=baseDate||date>addDays(baseDate,90))throw Error('请选择未来90天内的日期');state.estimated=[];state.confirmed=[];if(amount>0){const x={id:'future1',date,amount,source:d.get('source')||'来源未指定'};if(d.get('certainty')==='confirmed')state.confirmed=[x];else state.estimated=[x];}closeModal();render();toast('未来资金已更新，3天缺口重新计算');});}
 function newPlan(prefCard='',prefDate=''){const opts=state.cards.filter(c=>c.outstanding>0).map(c=>`<option value="${c.id}" ${c.id===prefCard?'selected':''}>${c.name} · ${c.last4} · 剩余${formatMoney(c.outstanding)}</option>`).join('');modal('新增一笔分批还款','安排好后会自动出现在对应日期的首页提醒。',`<div class="field"><label for="card">选择信用卡</label><select id="card" name="card">${opts}</select></div><div class="field"><label for="date">计划还款日期</label><input type="date" id="date" name="date" value="${prefDate||addDays(baseDate,1)}" min="${baseDate}" required></div>${moneyField('amount','计划还款金额（元）','1000.00')}<div class="warntext">这里创建的是你打算执行的还款计划，不等于已经还款或银行已确认入账。</div>`,'添加到还款计划',d=>{const c=card(d.get('card'));if(!c)throw Error('请选择信用卡');const amount=cents(d.get('amount'));if(amount===0)throw Error('还款金额须大于0');const date=d.get('date');if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date<baseDate||new Date(date+'T12:00:00Z').toISOString().slice(0,10)!==date)throw Error('请输入有效的未来日期');const allocated=state.plans.filter(p=>p.card===c.id).reduce((s,p)=>s+pending(p),0);if(allocated+amount>c.outstanding)throw Error('该卡剩余账单不足以支持更多计划，请先调整现有安排');state.plans.push({id:'p'+(++seq+10),card:c.id,date,amount,paid:0});closeModal();render();toast('新还款计划已添加');});}
 function planOptions(){modal('调整还款安排','选择要修改的计划。已记录的还款不会被删掉。',`<div class="actionslist">${state.plans.map(p=>{const c=card(p.card);return `<button class="smallaction" type="button" data-action="editplan" data-id="${p.id}"><span>${niceDate(p.date)} · ${c.name} ${c.last4}<br><span class="muted">已执行 ${formatMoney(p.paid)}</span></span><strong>${formatMoney(pending(p))} ›</strong></button>`}).join('')}</div><button type="button" class="secondaryfull" data-action="newplan">＋ 新增一笔</button>`,'关闭',()=>closeModal());}
 function editPlan(pid){const p=state.plans.find(x=>x.id===pid);if(!p)return;const c=card(p.card);modal('修改分批还款',`${c.name} · ${c.last4} · 已还 ${formatMoney(p.paid)}`,`<div class="field"><label for="date">执行日期</label><input type="date" name="date" id="date" value="${p.date}" min="${baseDate}" required></div>${moneyField('amount','更新后的整笔计划金额（元）',displayNumber(p.amount),'不能低于已经记录的实际还款。')}<div class="warntext">已记录的历史还款不受本次计划修改影响。修改日期后会重新计算首页每日提醒。</div>`,'保存计划',d=>{const date=d.get('date'),amount=cents(d.get('amount'));if(date<baseDate||!/^\d{4}-\d{2}-\d{2}$/.test(date)||new Date(date+'T12:00:00Z').toISOString().slice(0,10)!==date)throw Error('请输入有效的日期');if(amount<p.paid||amount===0)throw Error('计划不能低于已还金额，且必须大于0');const other=state.plans.filter(x=>x.card===c.id&&x.id!==p.id).reduce((s,x)=>s+pending(x),0);if(other+(amount-p.paid)>c.outstanding)throw Error('所有计划待还金额不能超过该卡剩余账单');p.date=date;p.amount=amount;closeModal();render();toast('计划已更新，首页提醒同步刷新');});}
 function offerModal(){const o=state.cashOffer;modal('录入银行现金服务报价','这里仅记录经你核实的银行正规现金产品报价。',`<div class="warntext">示例卡：建设银行 · 2250。普通消费额度不能直接当可到账现金。录入报价不会自动增加现金，也不会替你申请。</div>${moneyField('net','预计净到手金额（元）',o.net===null?'5000.00':displayNumber(o.net))}${moneyField('fee','银行告知的手续费（元）',o.fee===null?'0.00':displayNumber(o.fee))}<div class="field"><label for="date">银行告知的预计到账日期</label><input name="date" id="date" type="date" min="${baseDate}" value="${o.eta||addDays(baseDate,1)}" required></div><div class="field"><label for="verified">报价来源</label><select name="verified" id="verified"><option value="0">仅测试假设</option><option value="1">本人已核实银行官方报价</option></select></div>`,'保存报价信息',d=>{const net=cents(d.get('net')),fee=cents(d.get('fee'));if(net===0)throw Error('净到账金额应大于0');const date=d.get('date');if(date<baseDate)throw Error('到账日期不能早于今天');state.cashOffer={...o,net,fee,eta:date,verified:d.get('verified')==='1'};closeModal();render();toast('报价已保存；尚未记入现金');});}
-function fundModal(){const projected=[...state.confirmed,...state.estimated];const matchField=projected.length?`<div class="field"><label for="matched">是否兑现了之前登记的预计到账？</label><select id="matched" name="matched"><option value="">不是，单独一笔到账</option>${projected.map(f=>`<option value="${f.id}">${niceDate(f.date)} · ${formatMoney(f.amount)}（抵扣对应预测）</option>`).join('')}</select></div>`:'';modal('记录已实际到账的资金','只有你确实收到的钱，才能计入当前可动用现金。',`${moneyField('net','实际收到净额（元）','3000.00')}${moneyField('debt','这笔到账产生的新债务本金（元）','0.00','可以为0，例如非借款收入；不可少于实际净到账，若不适用请将资金来源分类为非借款。')}${matchField}<div class="field"><label for="category">资金类型</label><select name="category" id="category"><option value="income">经营回款／此前未计入的自有资金（不新增借款）</option><option value="loan">正规银行现金借款／其他合法借款到账（增加新负债）</option></select></div><div class="warntext">本演示不会发起借款或交易。银行借款新增债务不等于净到手金额，利息与实际还款日必须向银行核实；当前只记录本金差异。</div>`,'确认实际到账',d=>{const net=cents(d.get('net')),debtAmt=cents(d.get('debt')),type=d.get('category');if(net<=0)throw Error('实际到账应大于0');if(type==='income'&&debtAmt!==0)throw Error('普通收入不产生新信用债务，请将新债务设为0');if(type==='loan'&&(debtAmt<=0||debtAmt<net))throw Error('借款本金应大于或等于实际净到账');const matched=d.get('matched');if(matched){for(const key of ['confirmed','estimated']){const f=state[key].find(x=>x.id===matched);if(f){f.amount=Math.max(0,f.amount-net);state[key]=state[key].filter(x=>x.amount>0);break;}}}
-state.cash+=net;if(type==='loan')state.newDebt+=debtAmt;state.events.push({type,net,debt:debtAmt,date:baseDate});closeModal();render();toast('已记录实际到账 '+formatMoney(net));});}
+function fundModal(){
+ const projected=[...state.confirmed,...state.estimated];
+ const matchField=projected.length?'<div class="field"><label for="matched">关联此前的预计到账？</label><select id="matched" name="matched"><option value="">新的一笔，不抵扣原预测</option>'+projected.map(f=>'<option value="'+f.id+'">'+niceDate(f.date)+' · '+formatMoney(f.amount)+'（抵扣对应预测）</option>').join('')+'</select></div>':'';
+ const typeField='<div class="field"><label for="origin">实际到账来源</label><select id="origin" name="origin"><option value="income">经营回款／非借款收入（此前未计入现金）</option><option value="own">其他自有账户资金（此前未计入总现金）</option><option value="bankloan">银行正规现金借款（新增负债）</option><option value="otherloan">其他合法借款（新增负债）</option></select><div class="fieldsmall">不能把信用卡普通消费额度、未到账报价、账户之间已经统计过的转账当作新增现金。</div></div>';
+ modal('记录已实际到账的资金','按实际收款顺序录入；到账后重排后续还款。',typeField+
+   moneyField('net','本次真实净到账（元）','3000.00')+
+   moneyField('debt','由此产生的新债务本金（元）','0.00','非借款必须为0；借款须录入真实本金，不要只填写净到账。')+
+   moneyField('fee','已确认的资金费用（元）','0.00','仅记录实际产生且已核对的费用，本示例不代算银行利率。')+
+   matchField+
+   '<div class="warntext">公开演示不办理交易、不会保存数据。已还的消费额度不能当作实际现金。资金来源、手续费、到账日期均以真实凭证为准。</div>',
+   '确认净到账',d=>{
+     const net=cents(d.get('net')),debtAmt=cents(d.get('debt')),fee=cents(d.get('fee')),source=d.get('origin');
+     const loan=source==='bankloan'||source==='otherloan';
+     if(net<=0)throw Error('实际到账必须大于0');
+     if(!['income','own','bankloan','otherloan'].includes(source))throw Error('请选择有效的资金来源');
+     if(!loan&&debtAmt!==0)throw Error('非借款不能新增债务本金');
+     if(loan&&(debtAmt<=0||debtAmt<net))throw Error('借款本金不得小于净到账金额');
+     if(fee>0&&!loan)throw Error('非借款费用需单独核对，不通过此表增加借款费用');
+     const matched=d.get('matched');
+     if(matched){
+       for(const key of ['confirmed','estimated']){
+         const target=state[key].find(x=>x.id===matched);
+         if(target){target.amount=Math.max(0,target.amount-net);state[key]=state[key].filter(x=>x.amount>0);break;}
+       }
+     }
+     state.cash+=net;if(loan)state.newDebt+=debtAmt;
+     state.events.push({type:loan?'loan':'income',source,net,debt:debtAmt,fee,date:baseDate});
+     closeModal();render();toast('已确认净到账 '+formatMoney(net)+'，周转顺序已更新');
+   });
+}
 function toast(msg){const r=document.getElementById('toastRoot');r.innerHTML=`<div class="toast">${esc(msg)}</div>`;setTimeout(()=>{r.innerHTML=''},2800);}
 document.addEventListener('click',e=>{const t=e.target.closest('[data-action],[data-tab],#reset');if(!t){if(e.target.classList.contains('modalbg'))closeModal();return}if(t.id==='reset'){if(confirm('重置所有演示操作，恢复虚构数据？'))seed();return}if(t.dataset.tab){tab=t.dataset.tab;render();window.scrollTo(0,0);return;}switch(t.dataset.action){case'close':closeModal();break;case'repay':todayRepay(t.dataset.id);break;case'cash':cashEdit();break;case'plan':planOptions();break;case'newplan':newPlan(t.dataset.card||'',t.dataset.date||'');break;case'editplan':editPlan(t.dataset.id);break;case'offer':offerModal();break;case'futurefund':futureFundModal();break;case'fund':fundModal();break;}});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});document.addEventListener('visibilitychange',()=>{if(!document.hidden&&bjToday()!==baseDate)render()});setInterval(()=>{if(bjToday()!==baseDate)render()},60000);
