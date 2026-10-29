@@ -188,6 +188,15 @@ body{background:#f7f8fa}
 .cashflow-links{display:flex;gap:8px;padding:10px 12px}
 .cashflow-links button{flex:1;min-width:0;background:#fff;color:#355faf;border:1px solid #d8e1f0;border-radius:10px;font-size:11px;font-weight:700;padding:10px 5px}
 .cashflow-links button.primary{background:#3665bb;color:#fff;border-color:#3665bb}
+/* V0.10: optional holder fee and persistent-until-dismissed settlement. */
+.spend-fees{border:1px solid var(--line);border-radius:12px;margin:0 0 15px}
+.spend-fees summary{padding:13px;font-size:13px;color:#43556f;cursor:pointer;font-weight:700}
+.fee-content{padding:0 12px 12px}.fee-content .fieldsmall{line-height:1.6;color:#596b82}
+.settlement{border:1px solid var(--line);border-radius:12px;margin-bottom:15px;padding:0 12px}
+.settlement-row{display:flex;justify-content:space-between;gap:14px;padding:12px 0;font-size:13px;line-height:1.5}
+.settlement-row+.settlement-row{border-top:1px solid var(--line)}
+.compact-actions > :only-child,.actionbar > :only-child{grid-column:1/-1}
+.settlement-row span{color:#596b82}.settlement-row strong{text-align:right;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 </style>
 </head>
 <body>
@@ -253,7 +262,7 @@ function cardCreditInfo(c){
      if(Number.isSafeInteger(e.creditReleaseEstimateCents))amount+=e.creditReleaseEstimateCents;
      else uncertain=true; // do not fabricate restored balance if fee/credit details are missing
    }
-   if(e.type==='spend')amount-=e.amount;
+   if(e.type==='spend'||(e.type==='spend-fee'&&e.payment==='card'))amount-=e.amount;
  }
  return {amount:Math.max(0,amount),verified,uncertain,checkedDate:c.checkedDate??null,source:verified?'银行App人工核对':'演示预测'};
 }
@@ -465,7 +474,7 @@ function renderHome(){
       ${nextActionContent()}
       ${cashFlowPlanHtml()}
       ${turnoverHistory()}
-      <details class="next-details"><summary>调整还款安排或核对现金</summary><div class="next-buttons"><button class="main" data-action="plan">调整还款计划</button><button data-action="cash">核对还款现金</button></div></details>
+      <details class="next-details"><summary>调整还款安排</summary><div class="next-buttons"><button class="main" data-action="plan">调整还款计划</button></div></details>
       <details class="next-details"><summary>查看每笔还款的先后顺序</summary>
         <div class="next-detailintro">依照你登记的日期与金额排序；这里的“缺口”不包含未到账的钱。</div>
         ${turnoverTimeline().map(turnoverItem).join('')||'<div class="note">暂无未完成计划</div>'}
@@ -478,13 +487,13 @@ function renderHome(){
       </details>
     </div>
   </section>
-  <div class="compact-actions"><button class="bigbtn" data-action="cash">核对现有现金</button><button class="bigbtn" data-tab="plans">查看我的还款计划</button></div>`;
+  <div class="compact-actions"><button class="bigbtn" data-tab="plans">查看我的还款计划</button></div>`;
 }
-function renderCards(){return `<div class="tabhead"><h2>我的信用卡</h2><p>每张卡的账单日、预计还款日、可用消费额度都能在这里核对。</p></div><div class="rowlist subpage">${state.cards.map(c=>`<div class="subitem"><div style="display:flex;align-items:center;gap:10px">${htmCardIcon(c)}<div><strong>${c.name} · ${c.last4}</strong><p>本期到期日 ${c.due?niceDate(c.due):'暂无已出账'}</p></div></div><div style="text-align:right"><div class="num">${formatMoney(c.outstanding)}</div><div class="muted" style="font-size:10px;margin-top:4px">账单剩余</div><div style="font-size:10px;margin-top:4px;color:#597a9a">${cardCreditInfo(c).verified?`上次核对 ${formatMoney(cardCreditInfo(c).amount)} · ${cardCreditInfo(c).checkedDate||''}`:`预计可用 ${formatMoney(cardCreditInfo(c).amount)} · 待银行核对`}</div>${c.feeDisclosure==='listed'?`<div style="font-size:10px;color:#8a98a7;margin-top:3px">虚构月账单已列利息/费用 ${formatMoney(c.billedFeesCents)}（包含在账单内）</div>`:''}<div style="font-size:10px;margin-top:4px;color:#8595a9">${cardCycle(c)?`下次账单 ${niceDate(cardCycle(c).statement)} · 预计还款 ${niceDate(cardCycle(c).repayBy)}（正常消费）`:'账单周期待填写'}</div><button class="inline-action" data-action="verify-credit" data-card="${c.id}">核对额度 ›</button><button class="inline-action" data-action="edit-cycle" data-card="${c.id}" style="margin-left:8px">账单日期 ›</button></div></div>`).join('')}</div><div class="morebox"><div class="moretitle">当前账面债务 ${formatMoney(debt())}</div><div class="moredetail">排名按本演示的账单日和银行规定的预计到期日模拟；各卡最新实际可用额度、免息资格、交易入账时间要以银行App及官方账单核实。消费额度不是现金，也不能直接填补还款缺口。</div></div><div class="actionbar"><button class="bigbtn" data-action="cash">修改现金</button><button class="bigbtn primary" data-action="fund">记录实际到账</button></div>`;}
+function renderCards(){return `<div class="tabhead"><h2>我的信用卡</h2><p>每张卡的账单日、预计还款日、可用消费额度都能在这里核对。</p></div><div class="rowlist subpage">${state.cards.map(c=>`<div class="subitem"><div style="display:flex;align-items:center;gap:10px">${htmCardIcon(c)}<div><strong>${c.name} · ${c.last4}</strong><p>本期到期日 ${c.due?niceDate(c.due):'暂无已出账'}</p></div></div><div style="text-align:right"><div class="num">${formatMoney(c.outstanding)}</div><div class="muted" style="font-size:10px;margin-top:4px">账单剩余</div><div style="font-size:10px;margin-top:4px;color:#597a9a">${cardCreditInfo(c).verified?`上次核对 ${formatMoney(cardCreditInfo(c).amount)} · ${cardCreditInfo(c).checkedDate||''}`:`预计可用 ${formatMoney(cardCreditInfo(c).amount)} · 待银行核对`}</div>${c.feeDisclosure==='listed'?`<div style="font-size:10px;color:#8a98a7;margin-top:3px">虚构月账单已列利息/费用 ${formatMoney(c.billedFeesCents)}（包含在账单内）</div>`:''}<div style="font-size:10px;margin-top:4px;color:#8595a9">${cardCycle(c)?`下次账单 ${niceDate(cardCycle(c).statement)} · 预计还款 ${niceDate(cardCycle(c).repayBy)}（正常消费）`:'账单周期待填写'}</div><button class="inline-action" data-action="verify-credit" data-card="${c.id}">核对额度 ›</button><button class="inline-action" data-action="edit-cycle" data-card="${c.id}" style="margin-left:8px">账单日期 ›</button></div></div>`).join('')}</div><div class="morebox"><div class="moretitle">当前账面债务 ${formatMoney(debt())}</div><div class="moredetail">排名按本演示的账单日和银行规定的预计到期日模拟；各卡最新实际可用额度、免息资格、交易入账时间要以银行App及官方账单核实。消费额度不是现金，也不能直接填补还款缺口。</div></div><div class="actionbar"><button class="bigbtn primary" data-action="fund">记录实际到账</button></div>`;}
 function renderPlans(){const plans=[...state.plans].sort((a,b)=>a.date.localeCompare(b.date));return `<div class="tabhead"><h2>分批还款计划</h2><p>调整后，首页“今天”和未来3天会同步变化。</p></div><div class="rowlist subpage"><div class="smallhead">已经安排的还款</div>${plans.map(p=>{const c=card(p.card);return `<div class="planitem"><div><strong>${niceDate(p.date)} · ${c.name} ${c.last4}</strong><p>计划 ${formatMoney(p.amount)} · 已还 ${formatMoney(p.paid)}</p></div><div style="text-align:right"><strong>${formatMoney(pending(p))}</strong><p><span class="statuspill ${pending(p)===0?'done':''}">${pending(p)===0?'已记录完成':'待执行'}</span></p></div></div>`;}).join('')}</div><div class="actionbar"><button class="bigbtn primary" data-action="newplan">＋ 新增还款计划</button><button class="bigbtn" data-action="fund">记录实际资金到账</button></div><div class="morebox"><div class="moretitle">提醒怎么计算？</div><div class="moredetail">以你确认的分批计划作为提醒依据。今天的金额不会重复算入未来3天；实际还款会扣减计划和本期账单，预计资金不会提前入账。</div></div>`;}
 function render(){if(bjToday()!==baseDate)baseDate=bjToday();document.getElementById('main').innerHTML=tab==='home'?renderHome():tab==='cards'?renderCards():renderPlans();document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));}
 function closeModal(){document.getElementById('modalRoot').innerHTML='';}
-function modal(title,subtitle,body,submitText='确认',onSubmit=()=>{}){document.getElementById('modalRoot').innerHTML=`<div class="modalbg" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="modal"><div class="modalhead"><div><h2>${esc(title)}</h2><p>${esc(subtitle)}</p></div><button class="close" data-action="close" aria-label="关闭">×</button></div><form id="modalform">${body}<div id="formMsg" role="status"></div><button class="primaryfull" type="submit">${esc(submitText)}</button><button class="secondaryfull" type="button" data-action="close">取消</button></form></div></div>`;document.getElementById('modalform').addEventListener('submit',e=>{e.preventDefault();try{onSubmit(new FormData(e.currentTarget))}catch(err){document.getElementById('formMsg').innerHTML=`<div class="error">${esc(err.message||'操作失败')}</div>`}});const focus=document.querySelector('#modalform input,#modalform select');if(focus)focus.focus({preventScroll:true});}
+function modal(title,subtitle,body,submitText='确认',onSubmit=()=>{}){document.getElementById('modalRoot').innerHTML=`<div class="modalbg" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="modal"><div class="modalhead"><div><h2>${esc(title)}</h2><p>${esc(subtitle)}</p></div><button class="close" data-action="close" aria-label="关闭">×</button></div><form id="modalform">${body}<div id="formMsg" role="status"></div><button class="primaryfull" type="submit">${esc(submitText)}</button>${submitText==='知道了'?'':'<button class="secondaryfull" type="button" data-action="close">取消</button>'}</form></div></div>`;document.getElementById('modalform').addEventListener('submit',e=>{e.preventDefault();try{onSubmit(new FormData(e.currentTarget))}catch(err){document.getElementById('formMsg').innerHTML=`<div class="error">${esc(err.message||'操作失败')}</div>`}});const focus=document.querySelector('#modalform input,#modalform select');if(focus)focus.focus({preventScroll:true});}
 function moneyField(id,label,value,detail=''){return `<div class="field"><label for="${id}">${label}</label><input id="${id}" name="${id}" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(value)}" required>${detail?`<div class="fieldsmall">${detail}</div>`:''}</div>`}
 function todayRepay(pid){
  const p=state.plans.find(x=>x.id===pid);if(!p)return;
@@ -543,20 +552,58 @@ function verifyCredit(cardId){
    closeModal();render();toast('已核对 '+c.name.replace('银行','')+'消费额度 '+formatMoney(n));
   });
 }
+// Fee entries are separate classifications; only confirmed holder payments change balances.
+function settleSpend(cardId,amount,fee=0,payment='none'){
+ const c=card(cardId);
+ if(!c)throw Error('请选择信用卡');
+ if(![amount,fee].every(Number.isSafeInteger)||amount<=0||fee<0)throw Error('请输入有效的消费和手续费金额');
+ if(!['none','card','cash','included'].includes(payment))throw Error('商户收单手续费属于商户经营账，不能记为持卡人费用；请核对实际支付方式');
+ if(fee>0&&payment==='none')throw Error('请先核实手续费由谁承担、是否已支付及支付方式');
+ if(payment==='included'&&fee>=amount)throw Error('已包含的手续费须小于消费支付总额');
+ const goods=payment==='included'?amount-fee:amount;
+ const creditCharge=goods+(['card','included'].includes(payment)?fee:0);
+ const cashCharge=payment==='cash'?fee:0;
+ if(creditCharge>cardCreditInfo(c).amount)throw Error('消费金额不能超过当前可用额度预测，请先核对银行App');
+ if(cashCharge>activeCash())throw Error('可动用现金不足以支付手续费，请核对现金余额');
+ // Validate every input before writing either ledger. No cash-in event is created.
+ const transaction='purchase-'+(++seq);
+ state.events.push({type:'spend',transaction,card:c.id,amount:goods,date:baseDate});
+ if(fee>0)state.events.push({type:'spend-fee',transaction,card:c.id,amount:fee,payment:payment==='included'?'card':payment,included:payment==='included',date:baseDate});
+ state.newDebt+=creditCharge;
+ state.cash-=cashCharge;
+ return {cardId:c.id,goods,fee,total:goods+fee,creditCharge,cashCharge,remaining:cardCreditInfo(c).amount,payment};
+}
+function spendSummaryHtml(x){
+ const row=(label,value)=>'<div class="settlement-row"><span>'+label+'</span><strong>'+value+'</strong></div>';
+ return '<div class="settlement" aria-label="消费记录总结">'+
+  row('消费金额（不含手续费）',formatMoney(x.goods))+
+  row('已确认持卡人手续费',formatMoney(x.fee))+
+  row('合计实际资金成本',formatMoney(x.total))+
+  row('本卡未出账负债增加',formatMoney(x.creditCharge))+
+  row('预计卡剩余额度',formatMoney(x.remaining))+
+  row('实际现金变化',x.cashCharge?'减少 '+formatMoney(x.cashCharge):'不变（未产生现金到账）')+
+  '</div><div class="warntext">'+(x.payment==='included'?'手续费已包含在输入总额中，只分类一次，不重复加收。':x.payment==='cash'?'手续费从已统计的现金支付，不增加信用卡负债。':'真实消费及同卡实际支付的费用才增加本卡负债。')+
+  '<br>银行入账待核对：预计额度、实际记账日期和免息资格以银行App及账单为准。</div>';
+}
 function recordSpend(cardId){
  const c=card(cardId);if(!c)return;
  const cr=cardCreditInfo(c),cycle=cardCycle(c);
  if(!cycle||!c.graceEligible||(c.due&&c.due<baseDate&&c.outstanding>0))return toast('本卡免息条件尚未确认，请先核对银行账单');
+ let submitted=false;
  modal('记录普通真实消费',c.name+' · '+c.last4+'（演示仅虚构金额）',
    moneyField('amount','这次真实消费金额（元）','500.00')+
+   '<details class="spend-fees"><summary>手续费（可选，默认 ¥0）</summary><div class="fee-content">'+
+   moneyField('spendFee','持卡人实际手续费（元）','0.00','如真实支付渠道扣费；只填已确认由你承担的费用。')+
+   '<div class="field"><label for="feePayment">这笔费用实际怎么支付？</label><select id="feePayment" name="feePayment"><option value="none">无手续费／尚未核实（只记消费）</option><option value="card">另由本张信用卡支付</option><option value="cash">另从已统计的现金支付</option><option value="included">已包含在上方消费金额里</option><option value="merchant">商户承担的POS收单手续费</option></select></div>'+
+   '<div class="fieldsmall">选择“已包含”时，上方填交易总额，手续费只做分类，不再次扣款。尚未支付或来源不明的费用先不录入。</div>'+
+   '<div class="warntext">商户收单手续费是商户真实销售的经营费用，应按收单凭证另记商户账，不计入持卡人负债，也不在这里自动扣现金。此处只记真实商品或服务消费；POS自刷变现、虚构交易不能当经营回款。</div></div></details>'+
    '<div class="warntext">当前'+(cr.verified?'已核对/后续估算':'未核实预测')+'可用额度 '+formatMoney(cr.amount)+'。录入后减少可用消费额度、增加未出账负债，不增加现金。消费是否免息以银行实际记账与全额还款为准。</div>',
-   '记录消费',d=>{
-    const amount=cents(d.get('amount'));
-    const avail=cardCreditInfo(c);
-    if(amount<=0||amount>avail.amount)throw Error('消费金额不能超过当前可用额度预测，请先核对银行App');
-    state.events.push({type:'spend',card:c.id,amount,date:baseDate});
-    state.newDebt+=amount;
-    closeModal();render();toast('消费 '+formatMoney(amount)+' 已记录；可用额度和未出账负债已更新');
+   '确认并查看总结',d=>{
+    if(submitted)return;
+    const x=settleSpend(c.id,cents(d.get('amount')),cents(d.get('spendFee')||'0'),d.get('feePayment')||'none');
+    submitted=true;
+    closeModal();render();
+    modal('本次消费结算／记录总结',c.name+' · '+c.last4+' · 已记录（刷新会重置）',spendSummaryHtml(x),'知道了',()=>closeModal());
    });
 }
 
