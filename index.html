@@ -175,6 +175,19 @@ let state,tab='home',baseDate=bjToday(),seq=0;
 function seed(){baseDate=bjToday();seq=0;state={cash:1100000,reserved:0,estimated:[{id:'e1',date:addDays(baseDate,2),amount:400000,confirmed:false}],confirmed:[],cards:[{id:'cmb',name:'招商银行',last4:'1234',abbr:'招',cls:'cmb',outstanding:1400000,limit:800000,due:addDays(baseDate,6),cashOffer:0},{id:'icbc',name:'工商银行',last4:'5678',abbr:'工',cls:'icbc',outstanding:900000,limit:600000,due:addDays(baseDate,3),cashOffer:0},{id:'citic',name:'中信银行',last4:'6092',abbr:'中',cls:'citic',outstanding:550000,limit:700000,due:addDays(baseDate,5),cashOffer:0},{id:'ccb',name:'建设银行',last4:'2250',abbr:'建',cls:'ccb',outstanding:0,limit:550000,due:null,cashOffer:0}],plans:[{id:'p1',card:'cmb',date:baseDate,amount:400000,paid:0},{id:'p2',card:'icbc',date:baseDate,amount:200000,paid:0},{id:'p3',card:'citic',date:addDays(baseDate,1),amount:300000,paid:0},{id:'p4',card:'icbc',date:addDays(baseDate,2),amount:500000,paid:0}],newDebt:0,events:[],cashOffer:{card:'ccb',limit:600000,net:500000,fee:10000,verified:false,eta:addDays(baseDate,1)}};tab='home';closeModal();render();}
 const card=id=>state.cards.find(c=>c.id===id);
 const pending=p=>Math.max(0,p.amount-p.paid);
+
+function creditedFromRepayment(paymentCents,feesWithinPaymentCents=0){
+ if(!Number.isSafeInteger(paymentCents)||paymentCents<0||!Number.isSafeInteger(feesWithinPaymentCents)||feesWithinPaymentCents<0||feesWithinPaymentCents>paymentCents)throw Error('费用不能超过本次已还金额');
+ return paymentCents-feesWithinPaymentCents;
+}
+// A deliberately conservative *estimate* for the user's fee-offset scenario.
+// Different banks can also count fees as line usage, restore credit asynchronously,
+// impose holds, or change credit limits. Actual bank-app available credit prevails.
+function restoredCreditEstimate(cardId){
+ return state.events.filter(e=>e.type==='repay'&&e.card===cardId).reduce((s,e)=>s+(e.creditRelease??e.amount),0);
+}
+function availableCreditEstimate(c){return c.limit+restoredCreditEstimate(c.id);}
+
 const scheduledToday=()=>state.plans.filter(p=>p.date<=baseDate&&pending(p)>0);
 const totalToday=()=>scheduledToday().reduce((s,p)=>s+pending(p),0);
 const futurePlans=()=>state.plans.filter(p=>p.date>baseDate&&p.date<=addDays(baseDate,3)&&pending(p)>0);
@@ -344,13 +357,42 @@ function renderHome(){
   </section>
   <div class="compact-actions"><button class="bigbtn" data-action="cash">核对现有现金</button><button class="bigbtn" data-tab="plans">查看我的还款计划</button></div>`;
 }
-function renderCards(){return `<div class="tabhead"><h2>我的信用卡</h2><p>复杂信息放在这里，首页只显示今天需要做的事。</p></div><div class="rowlist subpage">${state.cards.map(c=>`<div class="subitem"><div style="display:flex;align-items:center;gap:10px">${htmCardIcon(c)}<div><strong>${c.name} · ${c.last4}</strong><p>本期到期日 ${c.due?niceDate(c.due):'暂无已出账'}</p></div></div><div style="text-align:right"><div class="num">${formatMoney(c.outstanding)}</div><div class="muted" style="font-size:10px;margin-top:4px">账单剩余</div></div></div>`).join('')}</div><div class="morebox"><div class="moretitle">当前账面债务 ${formatMoney(debt())}</div><div class="moredetail">包括已出账的剩余金额与本次记录的新债。可用消费额度不算现金，也不抵扣债务。</div></div><div class="actionbar"><button class="bigbtn" data-action="cash">修改现金</button><button class="bigbtn primary" data-action="fund">记录实际到账</button></div>`;}
+function renderCards(){return `<div class="tabhead"><h2>我的信用卡</h2><p>复杂信息放在这里，首页只显示今天需要做的事。</p></div><div class="rowlist subpage">${state.cards.map(c=>`<div class="subitem"><div style="display:flex;align-items:center;gap:10px">${htmCardIcon(c)}<div><strong>${c.name} · ${c.last4}</strong><p>本期到期日 ${c.due?niceDate(c.due):'暂无已出账'}</p></div></div><div style="text-align:right"><div class="num">${formatMoney(c.outstanding)}</div><div class="muted" style="font-size:10px;margin-top:4px">账单剩余</div><div style="font-size:10px;margin-top:4px;color:#597a9a">预计可用消费额度 ${formatMoney(availableCreditEstimate(c))}</div></div></div>`).join('')}</div><div class="morebox"><div class="moretitle">当前账面债务 ${formatMoney(debt())}</div><div class="moredetail">消费可用额度按演示初始值与本次还款抵扣费用估算，银行实际到账和额度恢复可能不同，请以银行APP为准。信用额度不等于现金，也不抵扣债务。</div></div><div class="actionbar"><button class="bigbtn" data-action="cash">修改现金</button><button class="bigbtn primary" data-action="fund">记录实际到账</button></div>`;}
 function renderPlans(){const plans=[...state.plans].sort((a,b)=>a.date.localeCompare(b.date));return `<div class="tabhead"><h2>分批还款计划</h2><p>调整后，首页“今天”和未来3天会同步变化。</p></div><div class="rowlist subpage"><div class="smallhead">已经安排的还款</div>${plans.map(p=>{const c=card(p.card);return `<div class="planitem"><div><strong>${niceDate(p.date)} · ${c.name} ${c.last4}</strong><p>计划 ${formatMoney(p.amount)} · 已还 ${formatMoney(p.paid)}</p></div><div style="text-align:right"><strong>${formatMoney(pending(p))}</strong><p><span class="statuspill ${pending(p)===0?'done':''}">${pending(p)===0?'已记录完成':'待执行'}</span></p></div></div>`;}).join('')}</div><div class="actionbar"><button class="bigbtn primary" data-action="newplan">＋ 新增还款计划</button><button class="bigbtn" data-action="fund">记录实际资金到账</button></div><div class="morebox"><div class="moretitle">提醒怎么计算？</div><div class="moredetail">以你确认的分批计划作为提醒依据。今天的金额不会重复算入未来3天；实际还款会扣减计划和本期账单，预计资金不会提前入账。</div></div>`;}
 function render(){if(bjToday()!==baseDate)baseDate=bjToday();document.getElementById('main').innerHTML=tab==='home'?renderHome():tab==='cards'?renderCards():renderPlans();document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));}
 function closeModal(){document.getElementById('modalRoot').innerHTML='';}
 function modal(title,subtitle,body,submitText='确认',onSubmit=()=>{}){document.getElementById('modalRoot').innerHTML=`<div class="modalbg" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="modal"><div class="modalhead"><div><h2>${esc(title)}</h2><p>${esc(subtitle)}</p></div><button class="close" data-action="close" aria-label="关闭">×</button></div><form id="modalform">${body}<div id="formMsg" role="status"></div><button class="primaryfull" type="submit">${esc(submitText)}</button><button class="secondaryfull" type="button" data-action="close">取消</button></form></div></div>`;document.getElementById('modalform').addEventListener('submit',e=>{e.preventDefault();try{onSubmit(new FormData(e.currentTarget))}catch(err){document.getElementById('formMsg').innerHTML=`<div class="error">${esc(err.message||'操作失败')}</div>`}});const focus=document.querySelector('#modalform input,#modalform select');if(focus)focus.focus({preventScroll:true});}
 function moneyField(id,label,value,detail=''){return `<div class="field"><label for="${id}">${label}</label><input id="${id}" name="${id}" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(value)}" required>${detail?`<div class="fieldsmall">${detail}</div>`:''}</div>`}
-function todayRepay(pid){const p=state.plans.find(x=>x.id===pid);if(!p)return;const c=card(p.card),remain=pending(p);modal('记录实际还款',`${c.name} · ${c.last4} · 待还 ${formatMoney(remain)}`,`${moneyField('amount','本次实际还款金额（元）',displayNumber(remain),'可只还一部分；记录后今日待还会自动减少。')}<div class="warntext">这是你手动确认的实际还款记录，演示版不会连接银行。当前可用现金 ${formatMoney(activeCash())}。</div>`,'确认已还',data=>{const n=cents(data.get('amount'));if(n<=0)throw Error('还款金额必须大于0');if(n>remain)throw Error('超过当前计划剩余金额');if(n>c.outstanding)throw Error('超过该卡账单余额');if(n>activeCash())throw Error('当前可动用现金不足，请先核实实际到账或修改现金');p.paid+=n;c.outstanding-=n;state.cash-=n;state.events.push({type:'repay',card:p.card,amount:n,date:baseDate});closeModal();render();toast('已记录 '+formatMoney(n)+' · 今日待还已更新');});}
+function todayRepay(pid){
+ const p=state.plans.find(x=>x.id===pid);if(!p)return;
+ const c=card(p.card),remain=pending(p);
+ modal('记录实际还款',c.name+' · '+c.last4+' · 待还 '+formatMoney(remain),
+  moneyField('amount','本次实际还款（元）',displayNumber(remain),'分批还款可以只记录实际已还的部分。')+
+  '<details class="compact-fold" style="padding:0 0 7px"><summary>这次包含利息或违约金？（没有就不填）</summary>'+
+  moneyField('feePart','这次还款中用于支付息费的金额（元）','0.00','属于上面的还款总额，不是额外扣一次现金。示例：还2000，100用于费用。')+'</details>'+
+  '<div id="creditPreview" class="warntext">预计恢复消费额度：'+formatMoney(remain)+'（未核实银行实际入账）</div>'+
+  '<div class="fieldsmall">只计算额度恢复的演示估值；现金减少全部实际还款金额。银行可用消费额度不等于可提取现金。</div>',
+  '确认已还',data=>{
+    const n=cents(data.get('amount')),feePart=cents(data.get('feePart')||'0');
+    if(n<=0)throw Error('还款金额必须大于0');
+    if(n>remain)throw Error('超过当前计划剩余金额');
+    if(n>c.outstanding)throw Error('超过该卡账单余额');
+    if(n>activeCash())throw Error('当前可动用现金不足，请先核实实际到账或修改现金');
+    const creditRelease=creditedFromRepayment(n,feePart);
+    p.paid+=n;c.outstanding-=n;state.cash-=n;
+    state.events.push({type:'repay',card:p.card,amount:n,feePart,creditRelease,date:baseDate});
+    closeModal();render();toast('已还 '+formatMoney(n)+'；预计恢复消费额度 '+formatMoney(creditRelease));
+  });
+ const amountEl=document.getElementById('amount'),feeEl=document.getElementById('feePart');
+ const preview=document.getElementById('creditPreview');
+ const updatePreview=()=>{
+  try{
+   const amount=cents(amountEl.value),fee=cents(feeEl.value||'0');
+   preview.textContent='预计恢复消费额度：'+formatMoney(creditedFromRepayment(amount,fee))+'（待银行核实）';
+  }catch(_){preview.textContent='金额或息费填写有误，请核对';}
+ };
+ if(amountEl&&feeEl&&preview){amountEl.addEventListener('input',updatePreview);feeEl.addEventListener('input',updatePreview);}
+}
 function cashEdit(){modal('修改当前资金','只需要输入现在真正可用的金额，不必交代来源。',`${moneyField('cash','当前实际现金（元）',displayNumber(state.cash))}${moneyField('reserved','其中要预留不用的金额（元）',displayNumber(state.reserved))}<div class="warntext">现金按已统计账户的总额核对；账户之间转账不算新增资金。未来预计到账不会自动记为已收到。</div>`,'更新资金',d=>{const cash=cents(d.get('cash')),reserved=cents(d.get('reserved'));if(reserved>cash)throw Error('预留金额不能超过当前实际现金');state.cash=cash;state.reserved=reserved;closeModal();render();toast('现金预算已更新');});}
 function futureFundModal(){
 const x=state.estimated[0]||state.confirmed[0]||{date:addDays(baseDate,2),amount:0};const confirmed=state.confirmed.length>0;
