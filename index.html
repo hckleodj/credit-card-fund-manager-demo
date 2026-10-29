@@ -150,6 +150,28 @@ body{background:#f7f8fa}
 .next-detailintro{font-size:10px;color:#8c99a7;padding:0 0 7px;line-height:1.7}
 .next-detailbuttons{display:flex;flex-wrap:wrap;gap:9px;margin-bottom:10px}
 .next-detailbuttons button{border:0;background:#edf3fd;border-radius:8px;color:#476aa2;padding:7px 9px;font-size:11px}
+
+/* CCM V0.8: real consumption choice and credit-line verification */
+.choose-lead{padding:13px 13px 12px;background:#f5f8ff;border-bottom:1px solid #e4ecfa}
+.choose-head{display:flex;align-items:center;justify-content:space-between;gap:9px}
+.choose-head strong{font-size:14px;color:#263d67}
+.choose-head span{font-size:10px;color:#4368b1;background:#e7eeff;padding:3px 7px;border-radius:8px}
+.choose-amount{font-size:23px;font-weight:800;color:#243d6c;margin:5px 0 2px}
+.choose-sub{color:#61748e;font-size:11px;line-height:1.7}
+.choose-buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:9px 12px}
+.choose-buttons button{border:1px solid #d7e2f1;border-radius:10px;background:white;color:#3763af;font-size:12px;font-weight:750;padding:10px 7px}
+.choose-buttons button.primary{background:#3461bd;border-color:#3461bd;color:white}
+.choose-note{padding:10px 12px 12px;color:#8c7b62;background:#fffbf4;font-size:11px;line-height:1.65;border-top:1px solid #f5ead8}
+.choose-grid{padding:0 12px}
+.choose-row{padding:11px 0;border-bottom:1px solid #eef1f4;display:flex;align-items:center;justify-content:space-between;gap:9px}
+.choose-row:last-child{border:0}
+.choose-row strong{font-size:12px;color:#273c58}
+.choose-row small{font-size:10px;color:#8795a7;display:block;margin-top:4px}
+.choose-money{text-align:right;font-size:12px;font-weight:750;white-space:nowrap}
+.choose-money small{font-weight:500}
+.choose-row button{color:#3466ac;background:none;border:0;font-size:10px;padding:6px 0}
+.choose-tag{font-size:10px;color:#a56d40;background:#fff4e5;border-radius:7px;padding:3px 6px}
+.choose-verified{color:#287e65;background:#e8f7f1}
 </style>
 </head>
 <body>
@@ -172,7 +194,7 @@ const niceDate=d=>{const a=d.split('-').map(Number);return a[1]+'月'+a[2]+'日'
 const cents=s=>{s=String(s).trim();if(!/^\d{1,9}(\.\d{1,2})?$/.test(s))throw Error('请输入非负金额，最多保留两位小数');const [a,b='']=s.split('.');const value=Number(a)*100+Number((b+'00').slice(0,2));if(!Number.isSafeInteger(value))throw Error('金额超出允许范围');return value;};
 const displayNumber=n=>(n/100).toFixed(2);
 let state,tab='home',baseDate=bjToday(),seq=0;
-function seed(){baseDate=bjToday();seq=0;state={cash:1100000,reserved:0,estimated:[{id:'e1',date:addDays(baseDate,2),amount:400000,confirmed:false}],confirmed:[],cards:[{id:'cmb',name:'招商银行',last4:'1234',abbr:'招',cls:'cmb',outstanding:1400000,limit:800000,due:addDays(baseDate,6),cashOffer:0},{id:'icbc',name:'工商银行',last4:'5678',abbr:'工',cls:'icbc',outstanding:900000,limit:600000,due:addDays(baseDate,3),cashOffer:0,feeDisclosure:'listed',billedFeesCents:10000,feeItems:[{category:'利息',amountCents:10000}],statementDate:addDays(baseDate,-6)},{id:'citic',name:'中信银行',last4:'6092',abbr:'中',cls:'citic',outstanding:550000,limit:700000,due:addDays(baseDate,5),cashOffer:0},{id:'ccb',name:'建设银行',last4:'2250',abbr:'建',cls:'ccb',outstanding:0,limit:550000,due:null,cashOffer:0}],plans:[{id:'p1',card:'cmb',date:baseDate,amount:400000,paid:0},{id:'p2',card:'icbc',date:baseDate,amount:200000,paid:0},{id:'p3',card:'citic',date:addDays(baseDate,1),amount:300000,paid:0},{id:'p4',card:'icbc',date:addDays(baseDate,2),amount:500000,paid:0}],newDebt:0,events:[],cashOffer:{card:'ccb',limit:600000,net:500000,fee:10000,verified:false,eta:addDays(baseDate,1)}};tab='home';closeModal();render();}
+function seed(){baseDate=bjToday();seq=0;state={cash:1100000,reserved:0,estimated:[{id:'e1',date:addDays(baseDate,2),amount:400000,confirmed:false}],confirmed:[],cards:[{id:'cmb',name:'招商银行',last4:'1234',abbr:'招',cls:'cmb',outstanding:1400000,limit:800000,due:addDays(baseDate,6),cashOffer:0,cycleDay:23,dueOffsetDays:19,graceEligible:true},{id:'icbc',name:'工商银行',last4:'5678',abbr:'工',cls:'icbc',outstanding:900000,limit:600000,due:addDays(baseDate,3),cashOffer:0,cycleDay:22,dueOffsetDays:20,graceEligible:true,feeDisclosure:'listed',billedFeesCents:10000,feeItems:[{category:'利息',amountCents:10000}],statementDate:addDays(baseDate,-6)},{id:'citic',name:'中信银行',last4:'6092',abbr:'中',cls:'citic',outstanding:550000,limit:700000,due:addDays(baseDate,5),cashOffer:0,cycleDay:5,dueOffsetDays:20,graceEligible:true},{id:'ccb',name:'建设银行',last4:'2250',abbr:'建',cls:'ccb',outstanding:0,limit:550000,due:null,cashOffer:0,cycleDay:28,dueOffsetDays:20,graceEligible:true}],plans:[{id:'p1',card:'cmb',date:baseDate,amount:400000,paid:0},{id:'p2',card:'icbc',date:baseDate,amount:200000,paid:0},{id:'p3',card:'citic',date:addDays(baseDate,1),amount:300000,paid:0},{id:'p4',card:'icbc',date:addDays(baseDate,2),amount:500000,paid:0}],newDebt:0,events:[],cashOffer:{card:'ccb',limit:600000,net:500000,fee:10000,verified:false,eta:addDays(baseDate,1)}};tab='home';closeModal();render();}
 const card=id=>state.cards.find(c=>c.id===id);
 const pending=p=>Math.max(0,p.amount-p.paid);
 
@@ -193,9 +215,66 @@ function restoredCreditEstimate(cardId){
  return state.events.filter(e=>e.type==='repay'&&e.card===cardId).reduce((total,e)=>
   total+(Number.isSafeInteger(e.creditReleaseEstimateCents)?e.creditReleaseEstimateCents:0),0);
 }
-function availableCreditEstimate(c){
- const restored=restoredCreditEstimate(c.id);
- return restored===null?null:c.limit+restored;
+const daysBetween=(a,b)=>Math.round((Date.parse(b+'T12:00:00Z')-Date.parse(a+'T12:00:00Z'))/86400000);
+function cardCycle(c,asOf=baseDate){
+ const d=new Date(asOf+'T12:00:00Z'),year=d.getUTCFullYear(),month=d.getUTCMonth();
+ if(!Number.isInteger(c.cycleDay)||c.cycleDay<1||c.cycleDay>31||!Number.isInteger(c.dueOffsetDays)||c.dueOffsetDays<1||c.dueOffsetDays>45)return null;
+ const at=(shift)=>{
+   const first=new Date(Date.UTC(year,month+shift,1,12)),yy=first.getUTCFullYear(),mm=first.getUTCMonth(),end=new Date(Date.UTC(yy,mm+1,0,12)).getUTCDate();
+   return yy+'-'+String(mm+1).padStart(2,'0')+'-'+String(Math.min(c.cycleDay,end)).padStart(2,'0');
+ };
+ // Conservative cycle assumption: if used on statement day, don't promise the new period.
+ const statement=at(0)>asOf?at(0):at(1);
+ const repayBy=addDays(statement,c.dueOffsetDays);
+ return {statement,repayBy,days:daysBetween(asOf,repayBy),boundary:daysBetween(asOf,statement)<=1};
+}
+function cardCreditInfo(c){
+ const verified=Number.isSafeInteger(c.checkedAvailableCents)&&c.checkedAvailableCents>=0;
+ const cutoff=verified?(c.checkedEventCount??0):0;
+ let amount=verified?c.checkedAvailableCents:c.limit,uncertain=false;
+ for(const e of state.events.slice(cutoff).filter(e=>e.card===c.id)){
+   if(e.type==='repay'){
+     if(Number.isSafeInteger(e.creditReleaseEstimateCents))amount+=e.creditReleaseEstimateCents;
+     else uncertain=true; // do not fabricate restored balance if fee/credit details are missing
+   }
+   if(e.type==='spend')amount-=e.amount;
+ }
+ return {amount:Math.max(0,amount),verified,uncertain,checkedDate:c.checkedDate??null,source:verified?'银行App人工核对':'演示预测'};
+}
+function availableCreditEstimate(c){return cardCreditInfo(c).amount;}
+function chooseCardForToday(){
+ return state.cards.map(c=>{
+   const cycle=cardCycle(c),credit=cardCreditInfo(c);
+   const overdue=!!(c.due&&c.due<baseDate&&c.outstanding>0);
+   const eligible=!!cycle&&!!c.graceEligible&&!overdue&&credit.amount>0;
+   return {id:c.id,cycle,credit,eligible};
+ }).sort((a,b)=>Number(b.eligible)-Number(a.eligible)||(b.cycle?.days??0)-(a.cycle?.days??0)||a.id.localeCompare(b.id));
+}
+function chooseCardDisplay(){
+ const ranked=chooseCardForToday(),top=ranked.find(x=>x.eligible);
+ if(!top)return '<div class="choose-lead"><strong>暂时无法确定适合用哪张卡</strong><div class="choose-sub">先核对各卡账单日、实际可用额度及免息资格；不要直接根据授信额度安排消费。</div></div>';
+ const c=card(top.id),p=top.cycle,cr=top.credit;
+ const valid=cr.verified&&!cr.uncertain;
+ const creditText=(valid?'已核对：':'估算：')+formatMoney(cr.amount);
+ const cards=ranked.map((x,i)=>{
+   const q=card(x.id),cycle=x.cycle,cred=x.credit;
+   return '<div class="choose-row"><div><strong>'+q.name.replace('银行','')+' '+q.last4+'</strong>'+
+    '<small>'+(cycle?'预计账单 '+niceDate(cycle.statement)+' · 预计到期 '+niceDate(cycle.repayBy):'账单日未设')+'</small>'+
+    '<small>'+(x.eligible?cycle.days+'天（仅正常消费假设）':'暂不建议按免息期使用')+'</small></div>'+
+    '<div class="choose-money">'+formatMoney(cred.amount)+'<small>'+(cred.verified&&!cred.uncertain?'银行App已核对 '+(cred.checkedDate||''):'估算／待核对')+'</small>'+
+    '<button data-action="verify-credit" data-card="'+q.id+'">核对额度 ›</button><button data-action="edit-cycle" data-card="'+q.id+'" style="margin-left:6px">改账单日 ›</button></div></div>';
+ }).join('');
+ return '<section class="compact-sec" aria-label="今天用哪张卡"><div class="compact-head"><h2>今天用哪张卡？</h2><span class="minor">按免息周期排序</span></div>'+
+  '<div class="compact-card"><div class="choose-lead"><div class="choose-head"><strong>'+c.name+' · '+c.last4+'</strong>'+
+  '<span>优先核对</span></div><div class="choose-amount">'+creditText+'</div>'+
+  '<div class="choose-sub">按虚构账单日 '+c.cycleDay+'号推算：今天正常消费，预计 <b>'+niceDate(p.repayBy)+'</b> 前全额还款，约 '+p.days+' 天。'+
+  (p.boundary?'临近账单日，入账跨期可能改变日期。':'')+
+  (!valid?'额度没有得到银行实时确认，请先核对。':'已核对额度只代表上次核对时点，后续变化是估算。')+
+  '</div></div>'+
+  '<div class="choose-buttons"><button class="primary" data-action="verify-credit" data-card="'+c.id+'">核对实际额度</button>'+
+  '<button data-action="record-spend" data-card="'+c.id+'">记录真实消费</button></div>'+
+  '<details class="next-details"><summary>其他信用卡及免息日排序</summary><div class="choose-grid">'+cards+'</div></details>'+
+  '<div class="choose-note"><b>注意：</b>这只针对真实、符合银行规则的普通消费，且需满足该卡免息资格及到期全额还款条件。银行取现或现金借款一般不享受消费免息期；消费额度不能用来填补上面的还款现金缺口。</div></div></section>';
 }
 const scheduledToday=()=>state.plans.filter(p=>p.date<=baseDate&&pending(p)>0);
 const totalToday=()=>scheduledToday().reduce((s,p)=>s+pending(p),0);
@@ -346,11 +425,12 @@ function renderHome(){
        <details class="compact-fold"><summary>资金测算说明及修改预计到账</summary><div class="compact-fold-content">先预留今天的还款后，实际可用余额约 ${formatMoney(projectedAfterToday())}。${state.estimated.length?'另有预计到账 '+formatMoney(state.estimated.filter(e=>e.date<=addDays(baseDate,3)).reduce((s,e)=>s+e.amount,0))+'，但未计入保守方案。':''}${fWithEstimate.gap<fGap.gap?'如所有未到账资金按时收到，参考缺口可能变为 '+formatMoney(fWithEstimate.gap)+'。':''}<div><button class="linkbtn" data-action="futurefund">修改未来到账 ›</button></div></div></details>
     </div>
   </section>
+  ${chooseCardDisplay()}
   <section class="compact-sec" aria-label="下一步怎么做"><div class="compact-head"><h2>下一步怎么做</h2><span class="minor">只看最重要的</span></div>
     <div class="compact-card">
       ${nextActionContent()}
       ${turnoverHistory()}
-      <div class="next-buttons"><button class="main" data-action="fund">我收到钱了</button><button data-action="plan">修改还款安排</button></div>
+      <div class="next-buttons"><button class="main" data-action="plan">调整还款计划</button><button data-action="cash">核对还款现金</button></div>
       <details class="next-details"><summary>查看每笔还款的先后顺序</summary>
         <div class="next-detailintro">依照你登记的日期与金额排序；这里的“缺口”不包含未到账的钱。</div>
         ${turnoverTimeline().map(turnoverItem).join('')||'<div class="note">暂无未完成计划</div>'}
@@ -359,14 +439,14 @@ function renderHome(){
         <div class="next-detailintro">经营回款、自有资金或正规借款，只有实际到账才计入现金；已统计过的账户互转不能再记为收入。</div>
         ${turnoverForecastRows()}
         <div class="turnover-source"><span class="miniicon">¥</span><div class="info"><div class="name">银行现金服务：尚未到账</div><div class="sub">建设2250 · ${state.cashOffer.verified?'已自行核实报价':'待银行核实'} · 预计净额 ${formatMoney(state.cashOffer.net)} · 费用 ${formatMoney(state.cashOffer.fee)}<br>这项只是备选，不会自动进入现金。</div></div></div>
-        <div class="next-detailbuttons"><button data-action="offer">核对银行报价</button><button data-action="futurefund">修改预计到账</button><button data-action="newplan">新增一笔还款</button></div>
+        <div class="next-detailbuttons"><button data-action="fund">登记已实际到账的现金</button><button data-action="offer">核对银行报价</button><button data-action="futurefund">修改预计到账</button><button data-action="newplan">新增一笔还款</button></div>
         <div class="next-detailintro">普通信用卡消费额度不是可用现金。公开演示不连接银行，刷新页面就会重置。</div>
       </details>
     </div>
   </section>
   <div class="compact-actions"><button class="bigbtn" data-action="cash">核对现有现金</button><button class="bigbtn" data-tab="plans">查看我的还款计划</button></div>`;
 }
-function renderCards(){return `<div class="tabhead"><h2>我的信用卡</h2><p>复杂信息放在这里，首页只显示今天需要做的事。</p></div><div class="rowlist subpage">${state.cards.map(c=>`<div class="subitem"><div style="display:flex;align-items:center;gap:10px">${htmCardIcon(c)}<div><strong>${c.name} · ${c.last4}</strong><p>本期到期日 ${c.due?niceDate(c.due):'暂无已出账'}</p></div></div><div style="text-align:right"><div class="num">${formatMoney(c.outstanding)}</div><div class="muted" style="font-size:10px;margin-top:4px">账单剩余</div><div style="font-size:10px;margin-top:4px;color:#597a9a">${availableCreditEstimate(c)===null?`银行实际可用额度待核对`:`演示估算可用额度 ${formatMoney(availableCreditEstimate(c))}`}</div>${c.feeDisclosure==='listed'?`<div style="font-size:10px;color:#8a98a7;margin-top:3px">虚构月账单已列利息/费用 ${formatMoney(c.billedFeesCents)}（包含在账单内）</div>`:''}</div></div>`).join('')}</div><div class="morebox"><div class="moretitle">当前账面债务 ${formatMoney(debt())}</div><div class="moredetail">部分卡片可通过已识别的虚构月账单息费演示费用抵扣；银行APP显示的实际消费额度及入账时间才是准数。消费额度不等于现金，也不抵扣债务。</div></div><div class="actionbar"><button class="bigbtn" data-action="cash">修改现金</button><button class="bigbtn primary" data-action="fund">记录实际到账</button></div>`;}
+function renderCards(){return `<div class="tabhead"><h2>我的信用卡</h2><p>每张卡的账单日、预计还款日、可用消费额度都能在这里核对。</p></div><div class="rowlist subpage">${state.cards.map(c=>`<div class="subitem"><div style="display:flex;align-items:center;gap:10px">${htmCardIcon(c)}<div><strong>${c.name} · ${c.last4}</strong><p>本期到期日 ${c.due?niceDate(c.due):'暂无已出账'}</p></div></div><div style="text-align:right"><div class="num">${formatMoney(c.outstanding)}</div><div class="muted" style="font-size:10px;margin-top:4px">账单剩余</div><div style="font-size:10px;margin-top:4px;color:#597a9a">${cardCreditInfo(c).verified?`上次核对 ${formatMoney(cardCreditInfo(c).amount)} · ${cardCreditInfo(c).checkedDate||''}`:`预计可用 ${formatMoney(cardCreditInfo(c).amount)} · 待银行核对`}</div>${c.feeDisclosure==='listed'?`<div style="font-size:10px;color:#8a98a7;margin-top:3px">虚构月账单已列利息/费用 ${formatMoney(c.billedFeesCents)}（包含在账单内）</div>`:''}<div style="font-size:10px;margin-top:4px;color:#8595a9">${cardCycle(c)?`下次账单 ${niceDate(cardCycle(c).statement)} · 预计还款 ${niceDate(cardCycle(c).repayBy)}（正常消费）`:'账单周期待填写'}</div><button class="inline-action" data-action="verify-credit" data-card="${c.id}">核对额度 ›</button><button class="inline-action" data-action="edit-cycle" data-card="${c.id}" style="margin-left:8px">账单日期 ›</button></div></div>`).join('')}</div><div class="morebox"><div class="moretitle">当前账面债务 ${formatMoney(debt())}</div><div class="moredetail">排名按本演示的账单日和银行规定的预计到期日模拟；各卡最新实际可用额度、免息资格、交易入账时间要以银行App及官方账单核实。消费额度不是现金，也不能直接填补还款缺口。</div></div><div class="actionbar"><button class="bigbtn" data-action="cash">修改现金</button><button class="bigbtn primary" data-action="fund">记录实际到账</button></div>`;}
 function renderPlans(){const plans=[...state.plans].sort((a,b)=>a.date.localeCompare(b.date));return `<div class="tabhead"><h2>分批还款计划</h2><p>调整后，首页“今天”和未来3天会同步变化。</p></div><div class="rowlist subpage"><div class="smallhead">已经安排的还款</div>${plans.map(p=>{const c=card(p.card);return `<div class="planitem"><div><strong>${niceDate(p.date)} · ${c.name} ${c.last4}</strong><p>计划 ${formatMoney(p.amount)} · 已还 ${formatMoney(p.paid)}</p></div><div style="text-align:right"><strong>${formatMoney(pending(p))}</strong><p><span class="statuspill ${pending(p)===0?'done':''}">${pending(p)===0?'已记录完成':'待执行'}</span></p></div></div>`;}).join('')}</div><div class="actionbar"><button class="bigbtn primary" data-action="newplan">＋ 新增还款计划</button><button class="bigbtn" data-action="fund">记录实际资金到账</button></div><div class="morebox"><div class="moretitle">提醒怎么计算？</div><div class="moredetail">以你确认的分批计划作为提醒依据。今天的金额不会重复算入未来3天；实际还款会扣减计划和本期账单，预计资金不会提前入账。</div></div>`;}
 function render(){if(bjToday()!==baseDate)baseDate=bjToday();document.getElementById('main').innerHTML=tab==='home'?renderHome():tab==='cards'?renderCards():renderPlans();document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));}
 function closeModal(){document.getElementById('modalRoot').innerHTML='';}
@@ -396,6 +476,56 @@ function todayRepay(pid){
      toast('已还 '+formatMoney(n)+(allocation?' · 账单费用分配 '+formatMoney(allocation.feePortionCents):'')+' · 额度恢复待银行核实');
    });
 }
+
+
+function editCardCycle(cardId){
+ const c=card(cardId);if(!c)return;
+ modal('调整账单周期',c.name+' · '+c.last4+'。请以银行App或正式账单上的日期为准。',
+  '<div class="field"><label for="cycleDay">每月账单日（1至31号）</label><input id="cycleDay" name="cycleDay" type="number" min="1" max="31" step="1" value="'+c.cycleDay+'" required></div>'+
+  '<div class="field"><label for="dueOffsetDays">账单日后约几天是最后还款日</label><input id="dueOffsetDays" name="dueOffsetDays" type="number" min="1" max="45" step="1" value="'+c.dueOffsetDays+'" required></div>'+
+  '<div class="field"><label for="grace">本卡普通消费免息资格</label><select id="grace" name="grace">'+
+  '<option value="yes" '+(c.graceEligible===true?'selected':'')+'>银行已确认可按正常消费免息规则使用</option>'+
+  '<option value="unknown" '+(c.graceEligible===null?'selected':'')+'>尚未核实，暂不推荐</option>'+
+  '<option value="no" '+(c.graceEligible===false?'selected':'')+'>当前不符合免息条件，暂不推荐</option></select></div>'+
+  '<div class="warntext">这里只是按银行账单周期估算下一账单和到期日。节假日、交易入账时间、临时额度和银行政策可能改变实际日期；还款必须按银行App实际账单执行。</div>',
+  '保存周期',d=>{
+    const day=Number(d.get('cycleDay')),offset=Number(d.get('dueOffsetDays')),grace=d.get('grace');
+    if(!Number.isInteger(day)||day<1||day>31)throw Error('账单日必须为1至31号');
+    if(!Number.isInteger(offset)||offset<1||offset>45)throw Error('请输入正确的还款间隔天数');
+    if(!['yes','no','unknown'].includes(grace))throw Error('请选择免息资格状态');
+    c.cycleDay=day;c.dueOffsetDays=offset;c.graceEligible=grace==='unknown'?null:grace==='yes';
+    closeModal();render();toast(c.name.replace('银行','')+'账单周期已更新，推荐顺序已重算');
+  });
+}
+
+function verifyCredit(cardId){
+ const c=card(cardId);if(!c)return;
+ modal('核对信用卡可用额度',c.name+' · '+c.last4+'。从银行App查看后填入，不用提交截图。',
+  moneyField('available','银行App当前可用消费额度（元）',displayNumber(cardCreditInfo(c).amount))+
+  '<div class="warntext">这是消费可用额度，不是提现额度。手动核对后将以此为新的预测起点，已经记录的还款/消费不会再重复加减。</div>',
+  '保存核对金额',d=>{
+   const n=cents(d.get('available'));
+   c.checkedAvailableCents=n;c.checkedEventCount=state.events.length;c.checkedDate=baseDate;
+   closeModal();render();toast('已核对 '+c.name.replace('银行','')+'消费额度 '+formatMoney(n));
+  });
+}
+function recordSpend(cardId){
+ const c=card(cardId);if(!c)return;
+ const cr=cardCreditInfo(c),cycle=cardCycle(c);
+ if(!cycle||!c.graceEligible||(c.due&&c.due<baseDate&&c.outstanding>0))return toast('本卡免息条件尚未确认，请先核对银行账单');
+ modal('记录普通真实消费',c.name+' · '+c.last4+'（演示仅虚构金额）',
+   moneyField('amount','这次真实消费金额（元）','500.00')+
+   '<div class="warntext">当前'+(cr.verified?'已核对/后续估算':'未核实预测')+'可用额度 '+formatMoney(cr.amount)+'。录入后减少可用消费额度、增加未出账负债，不增加现金。消费是否免息以银行实际记账与全额还款为准。</div>',
+   '记录消费',d=>{
+    const amount=cents(d.get('amount'));
+    const avail=cardCreditInfo(c);
+    if(amount<=0||amount>avail.amount)throw Error('消费金额不能超过当前可用额度预测，请先核对银行App');
+    state.events.push({type:'spend',card:c.id,amount,date:baseDate});
+    state.newDebt+=amount;
+    closeModal();render();toast('消费 '+formatMoney(amount)+' 已记录；可用额度和未出账负债已更新');
+   });
+}
+
 function cashEdit(){modal('修改当前资金','只需要输入现在真正可用的金额，不必交代来源。',`${moneyField('cash','当前实际现金（元）',displayNumber(state.cash))}${moneyField('reserved','其中要预留不用的金额（元）',displayNumber(state.reserved))}<div class="warntext">现金按已统计账户的总额核对；账户之间转账不算新增资金。未来预计到账不会自动记为已收到。</div>`,'更新资金',d=>{const cash=cents(d.get('cash')),reserved=cents(d.get('reserved'));if(reserved>cash)throw Error('预留金额不能超过当前实际现金');state.cash=cash;state.reserved=reserved;closeModal();render();toast('现金预算已更新');});}
 function futureFundModal(){
 const x=state.estimated[0]||state.confirmed[0]||{date:addDays(baseDate,2),amount:0};const confirmed=state.confirmed.length>0;
@@ -439,7 +569,7 @@ function fundModal(){
  sourceField.addEventListener('change',updateFields);updateFields();
 }
 function toast(msg){const r=document.getElementById('toastRoot');r.innerHTML=`<div class="toast">${esc(msg)}</div>`;setTimeout(()=>{r.innerHTML=''},2800);}
-document.addEventListener('click',e=>{const t=e.target.closest('[data-action],[data-tab],#reset');if(!t){if(e.target.classList.contains('modalbg'))closeModal();return}if(t.id==='reset'){if(confirm('重置所有演示操作，恢复虚构数据？'))seed();return}if(t.dataset.tab){tab=t.dataset.tab;render();window.scrollTo(0,0);return;}switch(t.dataset.action){case'close':closeModal();break;case'repay':todayRepay(t.dataset.id);break;case'cash':cashEdit();break;case'plan':planOptions();break;case'newplan':newPlan(t.dataset.card||'',t.dataset.date||'');break;case'editplan':editPlan(t.dataset.id);break;case'offer':offerModal();break;case'futurefund':futureFundModal();break;case'fund':fundModal();break;}});
+document.addEventListener('click',e=>{const t=e.target.closest('[data-action],[data-tab],#reset');if(!t){if(e.target.classList.contains('modalbg'))closeModal();return}if(t.id==='reset'){if(confirm('重置所有演示操作，恢复虚构数据？'))seed();return}if(t.dataset.tab){tab=t.dataset.tab;render();window.scrollTo(0,0);return;}switch(t.dataset.action){case'close':closeModal();break;case'repay':todayRepay(t.dataset.id);break;case'cash':cashEdit();break;case'plan':planOptions();break;case'newplan':newPlan(t.dataset.card||'',t.dataset.date||'');break;case'editplan':editPlan(t.dataset.id);break;case'offer':offerModal();break;case'futurefund':futureFundModal();break;case'fund':fundModal();break;case'verify-credit':verifyCredit(t.dataset.card);break;case'record-spend':recordSpend(t.dataset.card);break;case'edit-cycle':editCardCycle(t.dataset.card);break;}});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});document.addEventListener('visibilitychange',()=>{if(!document.hidden&&bjToday()!==baseDate)render()});setInterval(()=>{if(bjToday()!==baseDate)render()},60000);
 seed();
 </script>
