@@ -480,7 +480,7 @@ function nextActionContent(){
 function homeCreditStatus(x){
  const c=card(x.id),cr=x.credit;
  if(!cr.verified)return '待核对';
- if(cr.uncertain||state.events.length>(c.checkedEventCount??0))return '核对后有变动';
+ if(cr.uncertain||state.events.slice(c.checkedEventCount??0).some(e=>e.card===c.id))return '核对后有变动';
  return '已核对';
 }
 function homeTodayCredit(){
