@@ -423,7 +423,7 @@ function turnoverItem(row){
 function turnoverHistory(){
  const rows=state.events.filter(e=>e.date===baseDate&&(e.type==='income'||e.type==='loan'||e.type==='repay')).slice(-4);
  if(!rows.length)return '';
- const types={income:'经营／自有资金',own:'自有资金',bankloan:'银行正规借款',otherloan:'其他合法借款'};
+ const types={income:'经营／自有资金',own:'自有资金',settlement:'真实交易银行结算款',bankloan:'银行正规借款',otherloan:'其他合法借款'};
  const parts=rows.map(e=>e.type==='repay'
   ?'已还 '+(card(e.card)?.name.replace('银行','')||'某卡')+' '+formatMoney(e.amount)
   :'已到账 '+(types[e.source]||types[e.type]||'已确认资金')+' '+formatMoney(e.net)+(e.type==='loan'?'（新增债务 '+formatMoney(e.debt)+(e.fee?'，费用 '+formatMoney(e.fee):'')+'）':'')
@@ -633,8 +633,38 @@ function verifyCredit(cardId){
    closeModal();render();toast('已核对 '+c.name.replace('银行','')+'消费额度 '+formatMoney(n));
   });
 }
+// Receipt identity is shared by both entry points; never inferred from a purchase.
+function receiptIdentity(reference,arrived,notCounted){
+ if(arrived!==true)throw Error('请确认已实际到账，未到账不能计入现金');
+ if(notCounted!==true)throw Error('请确认未计入现金余额；已统计账户转账不能重复登记');
+ const receiptKey=String(reference||'').trim().normalize('NFKC').toLowerCase();
+ if(!receiptKey||receiptKey.length>100)throw Error('请填写有效的到账凭据编号（演示仅填虚构编号）');
+ if(state.events.some(e=>e.receiptKey===receiptKey))throw Error('该到账凭据已登记，不能重复计入现金');
+ return receiptKey;
+}
+function validateLinkedReceipt(r,holderFee){
+ const receiptKey=receiptIdentity(r.reference,r.arrived,r.notCounted);
+ if(!['income','settlement'].includes(r.kind)||r.background!==true)throw Error('请确认独立真实经营收入／银行结算背景；不能是自刷变现或账户互转');
+ if(![r.gross,r.fee,r.net].every(Number.isSafeInteger)||r.gross<=0||r.fee<0||r.net<=0||r.gross-r.fee!==r.net)throw Error('净到账须等于真实结算毛额减实际手续费，并与到账凭据一致');
+ if(r.netConfirmed!==true)throw Error('请核对并确认净到账金额');
+ if(holderFee>0&&r.fee>0&&r.distinctFees!==true)throw Error('请确认消费费用与结算扣费是两笔不同费用，不能双记');
+ return {...r,receiptKey};
+}
+function receiptIdentityFields(){return '<div class="field"><label for="receiptRef">到账凭据编号（演示仅虚构）</label><input id="receiptRef" name="receiptRef" maxlength="100" placeholder="如 DEMO-RECEIPT-001"><div class="fieldsmall">同一笔款在两个入口使用相同编号。若已包含在现金余额核对中，请勿再次登记。</div></div>'+checkField('arrived','已实际到账')+checkField('notCounted','未计入当前现金余额，也不是已统计账户互转');}
+function checkField(id,label){return '<div class="field"><label><input style="width:20px;min-height:24px;vertical-align:middle" type="checkbox" id="'+id+'" name="'+id+'"> '+label+'</label></div>';}
+function linkedReceiptFields(){return '<details class="linked-receipt spend-fees"><summary>关联实际到账（可选，独立收入）</summary><div class="fee-content">'+
+ checkField('linkReceipt','本次同时登记一笔独立实际到账')+
+ '<div id="receiptFields" hidden><div class="field"><label for="receiptKind">交易性质</label><select id="receiptKind" name="receiptKind"><option value="">请选择真实来源</option><option value="income">独立真实经营收入</option><option value="settlement">独立真实交易的银行结算款</option></select></div>'+
+ '<div class="note">此款与上方消费分别记账，金额不从消费复制。仅真实销售／服务带来的独立收入；自刷POS变现、虚构销售和已统计账户互转不能在此登记。</div>'+
+ moneyField('receiptGross','真实结算毛额（元）','','按独立到账凭据填写，不是上方消费金额。')+
+ moneyField('receiptFee','从该毛额中实际扣除的结算手续费（元）','0.00','商户结算费仅在这里扣一次，不计入持卡人费用／信用卡负债。')+
+ moneyField('receiptNet','确认净到账金额（元）','','须与实际到账一致；毛额减结算费。')+
+ receiptIdentityFields()+checkField('background','确认有独立真实交易背景，非本人POS自刷变现')+
+ checkField('netConfirmed','已按到账凭据核对净到账金额')+
+ '<div class="fieldsmall">消费与结算均有费用时才需下一项。</div>'+checkField('distinctFees','两处费用对应不同凭据／不同费用，没有重复填写')+'</div></div></details>';}
+function linkedReceiptData(d){return d.get('linkReceipt')==='on'?{kind:d.get('receiptKind'),gross:cents(d.get('receiptGross')),fee:cents(d.get('receiptFee')||'0'),net:cents(d.get('receiptNet')),reference:d.get('receiptRef'),arrived:d.get('arrived')==='on',notCounted:d.get('notCounted')==='on',background:d.get('background')==='on',netConfirmed:d.get('netConfirmed')==='on',distinctFees:d.get('distinctFees')==='on'}:null;}
 // Fee entries are separate classifications; only confirmed holder payments change balances.
-function settleSpend(cardId,amount,fee=0,payment='none'){
+function settleSpend(cardId,amount,fee=0,payment='none',receipt=null){
  const c=card(cardId);
  if(!c)throw Error('请选择信用卡');
  if(![amount,fee].every(Number.isSafeInteger)||amount<=0||fee<0)throw Error('请输入有效的消费和手续费金额');
@@ -646,23 +676,27 @@ function settleSpend(cardId,amount,fee=0,payment='none'){
  const cashCharge=payment==='cash'?fee:0;
  if(creditCharge>cardCreditInfo(c).amount)throw Error('消费金额不能超过当前可用额度预测，请先核对银行App');
  if(cashCharge>activeCash())throw Error('可动用现金不足以支付手续费，请核对现金余额');
- // Validate every input before writing either ledger. No cash-in event is created.
+ // All validations precede mutations, including the independent receipt.
+ const received=receipt?validateLinkedReceipt(receipt,fee):null;
+ if(![creditCharge,state.newDebt+creditCharge,state.cash-cashCharge+(received?.net||0)].every(Number.isSafeInteger))throw Error('金额超出精确记账范围');
  const transaction='purchase-'+(++seq);
  state.events.push({type:'spend',transaction,card:c.id,amount:goods,date:baseDate});
  if(fee>0)state.events.push({type:'spend-fee',transaction,card:c.id,amount:fee,payment:payment==='included'?'card':payment,included:payment==='included',date:baseDate});
  state.newDebt+=creditCharge;
  state.cash-=cashCharge;
- return {cardId:c.id,goods,fee,total:goods+fee,creditCharge,cashCharge,remaining:cardCreditInfo(c).amount,payment};
+ if(received){state.cash+=received.net;state.events.push({type:'income',source:received.kind,net:received.net,gross:received.gross,fee:received.fee,receiptKey:received.receiptKey,linkedPurchase:transaction,date:baseDate});}
+ return {receipt:received,cardId:c.id,goods,fee,total:goods+fee,creditCharge,cashCharge,remaining:cardCreditInfo(c).amount,payment};
 }
 function spendSummaryHtml(x){
  const row=(label,value)=>'<div class="settlement-row"><span>'+label+'</span><strong>'+value+'</strong></div>';
  return '<div class="settlement" aria-label="消费记录总结">'+
   row('消费金额（不含手续费）',formatMoney(x.goods))+
   row('已确认持卡人手续费',formatMoney(x.fee))+
-  row('合计实际资金成本',formatMoney(x.total))+
+  row('本次消费合计成本',formatMoney(x.total))+
   row('本卡未出账负债增加',formatMoney(x.creditCharge))+
   row('预计卡剩余额度',formatMoney(x.remaining))+
-  row('实际现金变化',x.cashCharge?'减少 '+formatMoney(x.cashCharge):'不变（未产生现金到账）')+
+  (x.receipt?row('独立到账性质',x.receipt.kind==='settlement'?'真实交易银行结算款':'独立真实经营收入')+row('结算毛额／实际扣费',formatMoney(x.receipt.gross)+' / '+formatMoney(x.receipt.fee))+row('确认净到账（独立现金事件）',formatMoney(x.receipt.net)):'')+
+  row('实际现金变化',x.receipt?('净变化 '+formatMoney(x.receipt.net-x.cashCharge)):x.cashCharge?'减少 '+formatMoney(x.cashCharge):'不变（未产生现金到账）')+
   '</div><div class="warntext">'+(x.payment==='included'?'手续费已包含在输入总额中，只分类一次，不重复加收。':x.payment==='cash'?'手续费从已统计的现金支付，不增加信用卡负债。':'真实消费及同卡实际支付的费用才增加本卡负债。')+
   '<br>银行入账待核对：预计额度、实际记账日期和免息资格以银行App及账单为准。</div>';
 }
@@ -678,14 +712,18 @@ function recordSpend(cardId){
    '<div class="field"><label for="feePayment">这笔费用实际怎么支付？</label><select id="feePayment" name="feePayment"><option value="none">无手续费／尚未核实（只记消费）</option><option value="card">另由本张信用卡支付</option><option value="cash">另从已统计的现金支付</option><option value="included">已包含在上方消费金额里</option><option value="merchant">商户承担的POS收单手续费</option></select></div>'+
    '<div class="fieldsmall">选择“已包含”时，上方填交易总额，手续费只做分类，不再次扣款。尚未支付或来源不明的费用先不录入。</div>'+
    '<div class="warntext">商户收单手续费是商户真实销售的经营费用，应按收单凭证另记商户账，不计入持卡人负债，也不在这里自动扣现金。此处只记真实商品或服务消费；POS自刷变现、虚构交易不能当经营回款。</div></div></details>'+
-   '<div class="warntext">当前'+(cr.verified?'已核对/后续估算':'未核实预测')+'可用额度 '+formatMoney(cr.amount)+'。录入后减少可用消费额度、增加未出账负债，不增加现金。消费是否免息以银行实际记账与全额还款为准。</div>',
+   linkedReceiptFields()+
+   '<div class="warntext">当前'+(cr.verified?'已核对/后续估算':'未核实预测')+'可用额度 '+formatMoney(cr.amount)+'。消费本身减少可用消费额度、增加未出账负债，消费本身不增加现金；独立到账须另行确认才增加现金。消费是否免息以银行实际记账与全额还款为准。</div>',
    '确认并查看总结',d=>{
     if(submitted)return;
-    const x=settleSpend(c.id,cents(d.get('amount')),cents(d.get('spendFee')||'0'),d.get('feePayment')||'none');
+    const x=settleSpend(c.id,cents(d.get('amount')),cents(d.get('spendFee')||'0'),d.get('feePayment')||'none',linkedReceiptData(d));
     submitted=true;
     closeModal();render();
     modal('本次消费结算／记录总结',c.name+' · '+c.last4+' · 已记录（刷新会重置）',spendSummaryHtml(x),'知道了',()=>closeModal());
    });
+ const link=document.getElementById('linkReceipt'),fields=document.getElementById('receiptFields');
+ const update=()=>{fields.hidden=!link.checked;document.querySelectorAll('#receiptFields input,#receiptFields select').forEach(el=>el.disabled=!link.checked);};
+ link.addEventListener('change',update);update();
 }
 
 function cashEdit(){modal('修改当前资金','只需要输入现在真正可用的金额，不必交代来源。',`${moneyField('cash','当前实际现金（元）',displayNumber(state.cash))}${moneyField('reserved','其中要预留不用的金额（元）',displayNumber(state.reserved))}<div class="warntext">现金按已统计账户的总额核对；账户之间转账不算新增资金。只按真实已到账资金登记，不要把信用额度算作现金。</div>`,'更新资金',d=>{const cash=cents(d.get('cash')),reserved=cents(d.get('reserved'));if(reserved>cash)throw Error('预留金额不能超过当前实际现金');state.cash=cash;state.reserved=reserved;closeModal();render();toast('现金预算已更新');});}
@@ -696,7 +734,7 @@ function offerModal(){const o=state.cashOffer;modal('录入银行现金服务报
 function fundModal(){
  const typeField='<div class="field"><label for="origin">实际到账来源</label><select id="origin" name="origin"><option value="income">经营回款／非借款收入（此前未计入现金）</option><option value="own">其他自有账户资金（此前未计入总现金）</option><option value="bankloan">银行正规现金借款（新增负债）</option><option value="otherloan">其他合法借款（新增负债）</option></select><div class="fieldsmall">不能把信用卡普通消费额度、未到账报价、账户之间已经统计过的转账当作新增现金。</div></div>';
  modal('我收到钱了','只登记确实已经到账、且之前没有计入现金的钱。',typeField+
-   moneyField('net','这次实际收到多少钱（元）','3000.00')+
+   moneyField('net','这次实际收到多少钱（元）','3000.00')+receiptIdentityFields()+
    '<div id="loanFields" class="off">'+
    moneyField('debt','借款本金（元）','0.00','只在选择借款时填写；本金不能少于净到账。')+
    moneyField('fee','已核实的费用（元）','0.00','根据机构给出的实际费用填写。')+'</div>'+
@@ -709,8 +747,10 @@ function fundModal(){
      if(!loan&&debtAmt!==0)throw Error('非借款不能新增债务本金');
      if(loan&&(debtAmt<=0||debtAmt<net))throw Error('借款本金不得小于净到账金额');
      if(fee>0&&!loan)throw Error('非借款费用需单独核对，不通过此表增加借款费用');
+     const receiptKey=receiptIdentity(d.get('receiptRef'),d.get('arrived')==='on',d.get('notCounted')==='on');
+     if(![state.cash+net,state.newDebt+(loan?debtAmt:0)].every(Number.isSafeInteger))throw Error('金额超出精确记账范围');
      state.cash+=net;if(loan)state.newDebt+=debtAmt;
-     state.events.push({type:loan?'loan':'income',source,net,debt:debtAmt,fee,date:baseDate});
+     state.events.push({type:loan?'loan':'income',source,net,debt:debtAmt,fee,receiptKey,date:baseDate});
      closeModal();render();toast('已登记到账 '+formatMoney(net)+'，接下来要还的钱已更新');
    });
  const sourceField=document.getElementById('origin'),loanFields=document.getElementById('loanFields');
